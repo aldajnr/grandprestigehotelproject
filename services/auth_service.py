@@ -72,20 +72,35 @@ def _send_email(app, recipient: str, subject: str, html_body: str, plain_body: s
     msg["To"] = recipient
     msg.attach(MIMEText(plain_body, "plain"))
     msg.attach(MIMEText(html_body, "html"))
-    try:
-        with smtplib.SMTP(app.config["MAIL_SERVER"], app.config["MAIL_PORT"], timeout=12) as smtp:
-            smtp.ehlo()
-            smtp.starttls()
-            smtp.login(app.config["MAIL_USERNAME"], app.config["MAIL_PASSWORD"])
-            smtp.sendmail(msg["From"], [recipient], msg.as_string())
-        logger.info("Email sent to %s | subject: %s", recipient, subject)
-        return True
-    except smtplib.SMTPAuthenticationError:
-        logger.error("SMTP auth failed. Use a Gmail App Password, not your account password.")
-        return False
-    except Exception as exc:
-        logger.error("Failed to send email: %s", exc)
-        return False
+    server = app.config["MAIL_SERVER"]
+    base_port = int(app.config.get("MAIL_PORT", 587))
+    ports_to_try = []
+    for p in [base_port, 2525, 587, 465]:
+        if p not in ports_to_try:
+            ports_to_try.append(p)
+
+    for port in ports_to_try:
+        try:
+            if port == 465:
+                with smtplib.SMTP_SSL(server, port, timeout=10) as smtp:
+                    smtp.login(app.config["MAIL_USERNAME"], app.config["MAIL_PASSWORD"])
+                    smtp.sendmail(msg["From"], [recipient], msg.as_string())
+            else:
+                with smtplib.SMTP(server, port, timeout=10) as smtp:
+                    smtp.ehlo()
+                    smtp.starttls()
+                    smtp.login(app.config["MAIL_USERNAME"], app.config["MAIL_PASSWORD"])
+                    smtp.sendmail(msg["From"], [recipient], msg.as_string())
+            logger.info("Email sent to %s | subject: %s | port: %s", recipient, subject, port)
+            return True
+        except smtplib.SMTPAuthenticationError:
+            logger.error("SMTP auth failed on port %s", port)
+            return False
+        except Exception as exc:
+            logger.warning("SMTP send failed on port %s: %s", port, exc)
+
+    logger.error("Failed to send email after trying SMTP ports %s", ports_to_try)
+    return False
 
 
 def send_otp_email(app, recipient: str, otp: str) -> bool:

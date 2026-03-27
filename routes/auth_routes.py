@@ -43,6 +43,8 @@ def login():
         # Send OTP to the staff member's own registered email
         email_sent = send_otp_email(current_app._get_current_object(), user["username"], otp)
         session["email_sent"] = email_sent
+        if not email_sent:
+            flash("Email delivery is temporarily unavailable. Use the code shown on the OTP page.", "warning")
 
         audit("LOGIN_PASSWORD_OK", notes="Password verified. OTP dispatched.")
         return redirect(url_for("auth.otp"))
@@ -104,6 +106,8 @@ def forgot_password():
             session["reset_otp_at"]   = time.time()
             sent = send_password_reset_otp(current_app._get_current_object(), user["username"], otp)
             session["reset_email_sent"] = sent
+            if not sent:
+                flash("Email delivery is temporarily unavailable. Use the reset code shown on the next page.", "warning")
             audit("PASSWORD_RESET_REQUESTED", notes="Reset OTP sent to: " + username)
 
         flash("If that email is registered, a reset code has been sent to it.", "info")
