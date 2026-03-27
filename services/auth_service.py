@@ -29,7 +29,9 @@ def _send_email(app, recipient: str, subject: str, html_body: str, plain_body: s
     sender_email = app.config.get("MAIL_FROM") or app.config.get("MAIL_USERNAME", "")
 
     # Prefer Brevo HTTP API in production to avoid SMTP connectivity issues.
-    if brevo_api_key:
+    # Brevo keys with prefix xsmtpsib are SMTP relay keys, not HTTP API keys.
+    use_brevo_http_api = bool(brevo_api_key and not brevo_api_key.startswith("xsmtpsib-"))
+    if use_brevo_http_api:
         payload = {
             "sender": {"email": sender_email},
             "to": [{"email": recipient}],
@@ -53,19 +55,16 @@ def _send_email(app, recipient: str, subject: str, html_body: str, plain_body: s
                 if 200 <= status < 300:
                     logger.info("Brevo email sent to %s | subject: %s", recipient, subject)
                     return True
-                logger.error("Brevo email failed with status %s", status)
-                return False
+                logger.error("Brevo email failed with status %s; falling back to SMTP", status)
         except urllib.error.HTTPError as exc:
             body = ""
             try:
                 body = exc.read().decode("utf-8", errors="ignore")
             except Exception:
                 body = ""
-            logger.error("Brevo API HTTP error %s: %s", exc.code, body)
-            return False
+            logger.error("Brevo API HTTP error %s: %s; falling back to SMTP", exc.code, body)
         except Exception as exc:
-            logger.error("Brevo API request failed: %s", exc)
-            return False
+            logger.error("Brevo API request failed: %s; falling back to SMTP", exc)
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
